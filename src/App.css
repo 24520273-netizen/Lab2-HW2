@@ -10,7 +10,7 @@
 }
 
 .audio-panel {
-  width: min(100%, 600px);
+  width: min(100%, 760px);
   padding: 24px;
   border: 1px solid #cccccc;
   border-radius: 12px;
@@ -54,5 +54,36 @@
 
 .frequency-output p {
   overflow-wrap: anywhere;
+  font-family: monospace;
+}
+
+.queue-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #cccccc;
+}
+
+.queue-section h2 {
+  margin-top: 0;
+}
+
+.queue-log {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #cccccc;
+  border-radius: 8px;
+}
+
+.queue-log h3 {
+  margin-top: 0;
+}
+
+.queue-log ol {
+  margin-bottom: 0;
+  padding-left: 24px;
+}
+
+.queue-log li {
+  margin: 6px 0;
   font-family: monospace;
 }

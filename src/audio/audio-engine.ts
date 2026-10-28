@@ -17,7 +17,10 @@ export class AudioEngine {
     this.analyser.connect(this.audioContext.destination);
   }
 
-  async loadAudio(trackUrl: string): Promise<AudioBuffer> {
+  async loadAudio(
+    trackUrl: string,
+    signal?: AbortSignal
+  ): Promise<AudioBuffer> {
     this.ensureInitialized();
 
     if (!this.audioContext) {
@@ -27,7 +30,7 @@ export class AudioEngine {
     let response: Response;
 
     try {
-      response = await fetch(trackUrl);
+      response = await fetch(trackUrl, { signal });
     } catch {
       throw new Error(`Failed to download audio from "${trackUrl}".`);
     }

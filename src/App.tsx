@@ -1,16 +1,25 @@
 import { useRef, useState } from "react";
 import "./App.css";
 import { AudioEngine } from "./audio/audio-engine";
+import { AudioTaskQueue } from "./audio/audio-task-queue";
 
 const SAMPLE_TRACK_URL = "/sample.mp3";
 
+const TRACK_A_URL = "/sample.mp3?track=A";
+const TRACK_B_URL = "/sample.mp3?track=B";
+const TRACK_C_URL = "/sample.mp3?track=C";
+
+const INVALID_TRACK_URL = "/missing-track.mp3";
+
 function App() {
   const audioEngineRef = useRef<AudioEngine | null>(null);
+  const audioQueueRef = useRef<AudioTaskQueue | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
 
   const [status, setStatus] = useState("Audio is not loaded.");
   const [frequencyPreview, setFrequencyPreview] = useState<number[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [queueLog, setQueueLog] = useState<string[]>([]);
 
   const getAudioEngine = (): AudioEngine => {
     if (!audioEngineRef.current) {
@@ -18,6 +27,34 @@ function App() {
     }
 
     return audioEngineRef.current;
+  };
+
+  const getAudioQueue = (): AudioTaskQueue => {
+    if (!audioQueueRef.current) {
+      audioQueueRef.current = new AudioTaskQueue(getAudioEngine());
+    }
+
+    return audioQueueRef.current;
+  };
+
+  const addQueueLog = (message: string): void => {
+    setQueueLog((currentLog) => [...currentLog, message]);
+  };
+
+  const enqueueTrack = async (
+    label: string,
+    trackUrl: string
+  ): Promise<void> => {
+    try {
+      const audioBuffer = await getAudioQueue().enqueue(trackUrl);
+
+      audioBufferRef.current = audioBuffer;
+      setIsLoaded(true);
+
+      addQueueLog(`Resolved: ${label}`);
+    } catch {
+      addQueueLog(`Rejected: ${label}`);
+    }
   };
 
   const handleLoadAudio = async (): Promise<void> => {
@@ -47,7 +84,7 @@ function App() {
 
   const handlePlayAudio = async (): Promise<void> => {
     if (!audioBufferRef.current) {
-      setStatus("Load the audio before playing it.");
+      setStatus("Load or enqueue audio before playing it.");
       return;
     }
 
@@ -89,6 +126,35 @@ function App() {
     }
   };
 
+  const handleSingleTrackTest = (): void => {
+    setQueueLog([]);
+    addQueueLog("Enqueued: Track A");
+
+    void enqueueTrack("Track A", TRACK_A_URL);
+  };
+
+  const handleFifoTest = (): void => {
+    setQueueLog([]);
+
+    addQueueLog("Enqueued: Track A");
+    addQueueLog("Enqueued: Track B");
+    addQueueLog("Enqueued: Track C");
+
+    void enqueueTrack("Track A", TRACK_A_URL);
+    void enqueueTrack("Track B", TRACK_B_URL);
+    void enqueueTrack("Track C", TRACK_C_URL);
+  };
+
+  const handleErrorRecoveryTest = (): void => {
+    setQueueLog([]);
+
+    addQueueLog("Enqueued: Invalid Track A");
+    addQueueLog("Enqueued: Track B");
+
+    void enqueueTrack("Invalid Track A", INVALID_TRACK_URL);
+    void enqueueTrack("Track B", TRACK_B_URL);
+  };
+
   return (
     <main className="app">
       <section className="audio-panel">
@@ -128,6 +194,38 @@ function App() {
             <p>{frequencyPreview.join(", ")}</p>
           </section>
         )}
+
+        <section className="queue-section">
+          <h2>FIFO Audio Task Queue</h2>
+
+          <div className="controls">
+            <button type="button" onClick={handleSingleTrackTest}>
+              Enqueue Track A
+            </button>
+
+            <button type="button" onClick={handleFifoTest}>
+              Enqueue A, B, C
+            </button>
+
+            <button type="button" onClick={handleErrorRecoveryTest}>
+              Test Error Recovery
+            </button>
+          </div>
+
+          <section className="queue-log">
+            <h3>Queue Test Log</h3>
+
+            {queueLog.length === 0 ? (
+              <p>No queue test has been started.</p>
+            ) : (
+              <ol>
+                {queueLog.map((message, index) => (
+                  <li key={`${message}-${index}`}>{message}</li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </section>
       </section>
     </main>
   );
