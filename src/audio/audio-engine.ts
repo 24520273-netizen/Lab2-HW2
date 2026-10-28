@@ -1,6 +1,7 @@
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private activeSource: AudioBufferSourceNode | null = null;
 
   private ensureInitialized(): void {
     if (this.audioContext && this.analyser) {
@@ -17,6 +18,20 @@ export class AudioEngine {
     this.analyser.connect(this.audioContext.destination);
   }
 
+  private createAbortError(): DOMException {
+    return new DOMException("Audio loading was cancelled.", "AbortError");
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      throw this.createAbortError();
+    }
+  }
+
+  private isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === "AbortError";
+  }
+
   async loadAudio(
     trackUrl: string,
     signal?: AbortSignal
@@ -27,11 +42,19 @@ export class AudioEngine {
       throw new Error("AudioContext could not be initialized.");
     }
 
+    this.throwIfAborted(signal);
+
     let response: Response;
 
     try {
-      response = await fetch(trackUrl, { signal });
-    } catch {
+      response = await fetch(trackUrl, {
+        signal,
+      });
+    } catch (error) {
+      if (signal?.aborted || this.isAbortError(error)) {
+        throw this.createAbortError();
+      }
+
       throw new Error(`Failed to download audio from "${trackUrl}".`);
     }
 
@@ -41,13 +64,37 @@ export class AudioEngine {
       );
     }
 
-    const arrayBuffer = await response.arrayBuffer();
+    this.throwIfAborted(signal);
+
+    let arrayBuffer: ArrayBuffer;
 
     try {
-      return await this.audioContext.decodeAudioData(arrayBuffer);
-    } catch {
+      arrayBuffer = await response.arrayBuffer();
+    } catch (error) {
+      if (signal?.aborted || this.isAbortError(error)) {
+        throw this.createAbortError();
+      }
+
+      throw new Error("Failed to read the downloaded audio data.");
+    }
+
+    this.throwIfAborted(signal);
+
+    let audioBuffer: AudioBuffer;
+
+    try {
+      audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+    } catch (error) {
+      if (signal?.aborted || this.isAbortError(error)) {
+        throw this.createAbortError();
+      }
+
       throw new Error("Failed to decode the downloaded audio data.");
     }
+
+    this.throwIfAborted(signal);
+
+    return audioBuffer;
   }
 
   async playAudio(audioBuffer: AudioBuffer): Promise<AudioBufferSourceNode> {
@@ -61,15 +108,57 @@ export class AudioEngine {
       await this.audioContext.resume();
     }
 
+    this.stopActiveSource();
+
     const source = this.audioContext.createBufferSource();
 
     source.buffer = audioBuffer;
-
     source.connect(this.analyser);
 
-    source.start();
+    this.activeSource = source;
+
+    source.onended = () => {
+      source.disconnect();
+
+      if (this.activeSource === source) {
+        this.activeSource = null;
+      }
+    };
+
+    try {
+      source.start();
+    } catch (error) {
+      source.onended = null;
+      source.disconnect();
+
+      if (this.activeSource === source) {
+        this.activeSource = null;
+      }
+
+      throw error;
+    }
 
     return source;
+  }
+
+  stopActiveSource(): void {
+    const source = this.activeSource;
+
+    if (!source) {
+      return;
+    }
+
+    source.onended = null;
+
+    try {
+      source.stop();
+    } catch {
+      // The source may already have stopped.
+    }
+
+    source.disconnect();
+
+    this.activeSource = null;
   }
 
   getFrequencyData(): Uint8Array {

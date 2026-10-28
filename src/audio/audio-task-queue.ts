@@ -32,6 +32,14 @@ export class AudioTaskQueue {
     });
   }
 
+  cancelActive(): void {
+    if (!this.activeController) {
+      return;
+    }
+
+    this.activeController.abort();
+  }
+
   private async processNext(): Promise<void> {
     if (this.isProcessing) {
       return;
@@ -54,21 +62,31 @@ export class AudioTaskQueue {
         try {
           const audioBuffer = await this.audioEngine.loadAudio(
             task.trackUrl,
-            this.activeController.signal
+            task.controller.signal
           );
 
           console.log(`Completed: ${task.trackUrl}`);
 
           task.resolve(audioBuffer);
         } catch (error) {
-          console.error(`Failed: ${task.trackUrl}`, error);
+          if (
+            error instanceof DOMException &&
+            error.name === "AbortError"
+          ) {
+            console.log(`Cancelled: ${task.trackUrl}`);
+          } else {
+            console.error(`Failed: ${task.trackUrl}`, error);
+          }
 
           task.reject(error);
         } finally {
-          this.activeController = null;
+          if (this.activeController === task.controller) {
+            this.activeController = null;
+          }
         }
       }
     } finally {
+      this.activeController = null;
       this.isProcessing = false;
     }
   }

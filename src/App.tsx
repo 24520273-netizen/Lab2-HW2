@@ -41,6 +41,10 @@ function App() {
     setQueueLog((currentLog) => [...currentLog, message]);
   };
 
+  const isAbortError = (error: unknown): boolean => {
+    return error instanceof DOMException && error.name === "AbortError";
+  };
+
   const enqueueTrack = async (
     label: string,
     trackUrl: string
@@ -52,7 +56,12 @@ function App() {
       setIsLoaded(true);
 
       addQueueLog(`Resolved: ${label}`);
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        addQueueLog(`Cancelled: ${label}`);
+        return;
+      }
+
       addQueueLog(`Rejected: ${label}`);
     }
   };
@@ -89,9 +98,7 @@ function App() {
     }
 
     try {
-      const audioEngine = getAudioEngine();
-
-      await audioEngine.playAudio(audioBufferRef.current);
+      await getAudioEngine().playAudio(audioBufferRef.current);
 
       setStatus("Audio is playing through the analyser.");
     } catch (error) {
@@ -102,6 +109,12 @@ function App() {
 
       setStatus(message);
     }
+  };
+
+  const handleStopAudio = (): void => {
+    getAudioEngine().stopActiveSource();
+
+    setStatus("Active audio source stopped and disconnected.");
   };
 
   const handleReadFrequencyData = (): void => {
@@ -128,6 +141,7 @@ function App() {
 
   const handleSingleTrackTest = (): void => {
     setQueueLog([]);
+
     addQueueLog("Enqueued: Track A");
 
     void enqueueTrack("Track A", TRACK_A_URL);
@@ -155,6 +169,26 @@ function App() {
     void enqueueTrack("Track B", TRACK_B_URL);
   };
 
+  const handleCancelActive = (): void => {
+    getAudioQueue().cancelActive();
+
+    addQueueLog("Cancel requested for active task");
+  };
+
+  const handleCancellationTest = (): void => {
+    setQueueLog([]);
+
+    addQueueLog("Enqueued: Track A");
+    addQueueLog("Enqueued: Track B");
+
+    void enqueueTrack("Track A", TRACK_A_URL);
+    void enqueueTrack("Track B", TRACK_B_URL);
+
+    getAudioQueue().cancelActive();
+
+    addQueueLog("Cancel requested for active task");
+  };
+
   return (
     <main className="app">
       <section className="audio-panel">
@@ -175,6 +209,14 @@ function App() {
             disabled={!isLoaded}
           >
             Play Audio
+          </button>
+
+          <button
+            type="button"
+            onClick={handleStopAudio}
+            disabled={!isLoaded}
+          >
+            Stop Audio
           </button>
 
           <button
@@ -209,6 +251,14 @@ function App() {
 
             <button type="button" onClick={handleErrorRecoveryTest}>
               Test Error Recovery
+            </button>
+
+            <button type="button" onClick={handleCancelActive}>
+              Cancel Active Task
+            </button>
+
+            <button type="button" onClick={handleCancellationTest}>
+              Test Active Cancellation
             </button>
           </div>
 
